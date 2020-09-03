@@ -9,11 +9,11 @@ use crate::pdsc::sequence_parser;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sequence {
-    name: String,
-    pname: Option<String>,
-    disable: bool,
-    info: Option<String>,
-    body: Vec<Struct>,
+    pub name: String,
+    pub pname: Option<String>,
+    pub disable: bool,
+    pub info: Option<String>,
+    pub body: Vec<Struct>,
 }
 
 impl FromElem for Sequence {
@@ -49,11 +49,11 @@ impl FromElem for Struct {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Control {
-    if_cond: Option<Expr>,
-    while_cond: Option<Expr>,
-    timeout: Option<u64>,
-    info: Option<String>,
-    body: Vec<Struct>,
+    pub if_cond: Option<Expr>,
+    pub while_cond: Option<Expr>,
+    pub timeout: Option<u64>,
+    pub info: Option<String>,
+    pub body: Vec<Struct>,
 }
 
 impl FromElem for Control {
@@ -73,9 +73,9 @@ impl FromElem for Control {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
-    atomic: bool,
-    info: Option<String>,
-    body: Vec<Stmt>,
+    pub atomic: bool,
+    pub info: Option<String>,
+    pub body: Vec<Stmt>,
 }
 
 impl FromElem for Block {
