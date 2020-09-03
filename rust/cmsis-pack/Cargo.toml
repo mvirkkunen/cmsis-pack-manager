@@ -23,6 +23,7 @@ serde = "^1.0.89"
 serde_derive = "^1.0.89"
 serde_json = "1.0"
 tokio-core = "0.1.17"
+nom = "5.1.2"
 
 [dev-dependencies]
 time = "0.2.16"

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::utils::prelude::*;
+use crate::pdsc::sequence::Sequence;
 use failure::{format_err, Error};
 use minidom::Element;
 use serde::{Deserialize, Serialize};
@@ -416,6 +417,7 @@ struct DeviceBuilder<'dom> {
     vendor: Option<&'dom str>,
     family: Option<&'dom str>,
     sub_family: Option<&'dom str>,
+    sequences: Vec<Sequence>,
 }
 
 #[derive(Debug, Serialize)]
@@ -427,6 +429,7 @@ pub struct Device {
     pub vendor: Option<String>,
     pub family: String,
     pub sub_family: Option<String>,
+    pub sequences: Vec<Sequence>,
 }
 
 impl<'dom> DeviceBuilder<'dom> {
@@ -448,6 +451,7 @@ impl<'dom> DeviceBuilder<'dom> {
             processor: None,
             family,
             sub_family,
+            sequences: Vec::new(),
         }
     }
 
@@ -471,11 +475,13 @@ impl<'dom> DeviceBuilder<'dom> {
             vendor: self.vendor.map(str::to_string),
             family,
             sub_family: self.sub_family.map(str::to_string),
+            sequences: self.sequences,
         })
     }
 
     fn add_parent(mut self, parent: &Self) -> Result<Self, Error> {
         self.algorithms.extend_from_slice(&parent.algorithms);
+        self.sequences.extend_from_slice(&parent.sequences);
         Ok(Self {
             name: self.name.or(parent.name),
             algorithms: self.algorithms,
@@ -487,6 +493,7 @@ impl<'dom> DeviceBuilder<'dom> {
             vendor: self.vendor.or(parent.vendor),
             family: self.family.or(parent.family),
             sub_family: self.sub_family.or(parent.sub_family),
+            sequences: self.sequences,
         })
     }
 
@@ -505,6 +512,11 @@ impl<'dom> DeviceBuilder<'dom> {
 
     fn add_algorithm(&mut self, alg: Algorithm) -> &mut Self {
         self.algorithms.push(alg);
+        self
+    }
+
+    fn add_sequence(&mut self, seq: Sequence) -> &mut Self {
+        self.sequences.push(seq);
         self
     }
 }
@@ -532,7 +544,17 @@ fn parse_device<'dom>(e: &'dom Element) -> Vec<DeviceBuilder<'dom>> {
                     .ok_warn()
                     .map(|prc| device.add_processor(prc));
                 None
-            }
+            },
+            "sequences" => {
+                e.children()
+                    .filter(|seq_child| seq_child.name() == "sequence")
+                    .for_each(|seq_child| {
+                        FromElem::from_elem(seq_child)
+                            .ok_warn()
+                            .map(|seq| device.add_sequence(seq));
+                    });
+                None
+            },
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -570,6 +592,16 @@ fn parse_sub_family<'dom>(e: &'dom Element) -> Vec<DeviceBuilder<'dom>> {
                     .map(|prc| sub_family_device.add_processor(prc));
                 Vec::new()
             }
+            "sequences" => {
+                e.children()
+                    .filter(|seq_child| seq_child.name() == "sequence")
+                    .for_each(|seq_child| {
+                        FromElem::from_elem(seq_child)
+                            .ok_warn()
+                            .map(|seq| sub_family_device.add_sequence(seq));
+                    });
+                Vec::new()
+            }
             _ => Vec::new(),
         })
         .collect::<Vec<_>>();
@@ -602,6 +634,16 @@ fn parse_family(e: &Element) -> Result<Vec<Device>, Error> {
                 FromElem::from_elem(child)
                     .ok_warn()
                     .map(|prc| family_device.add_processor(prc));
+                Vec::new()
+            }
+            "sequences" => {
+                e.children()
+                    .filter(|seq_child| seq_child.name() == "sequence")
+                    .for_each(|seq_child| {
+                        FromElem::from_elem(seq_child)
+                            .ok_warn()
+                            .map(|seq| family_device.add_sequence(seq));
+                    });
                 Vec::new()
             }
             _ => Vec::new(),

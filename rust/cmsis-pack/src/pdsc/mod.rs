@@ -12,10 +12,13 @@ use failure::{format_err, Error};
 mod component;
 mod condition;
 mod device;
+pub mod sequence;
+mod sequence_parser;
 
 pub use crate::pdsc::component::{ComponentBuilders, FileRef};
 pub use crate::pdsc::condition::{Condition, Conditions};
 pub use crate::pdsc::device::{Algorithm, Core, Device, Devices, Memories, Processors};
+pub use crate::pdsc::sequence::Sequence;
 
 pub struct Release {
     pub version: String,
