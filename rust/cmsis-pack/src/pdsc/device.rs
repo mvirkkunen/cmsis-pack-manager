@@ -546,7 +546,7 @@ fn parse_device<'dom>(e: &'dom Element) -> Vec<DeviceBuilder<'dom>> {
                 None
             },
             "sequences" => {
-                e.children()
+                child.children()
                     .filter(|seq_child| seq_child.name() == "sequence")
                     .for_each(|seq_child| {
                         FromElem::from_elem(seq_child)
@@ -593,7 +593,7 @@ fn parse_sub_family<'dom>(e: &'dom Element) -> Vec<DeviceBuilder<'dom>> {
                 Vec::new()
             }
             "sequences" => {
-                e.children()
+                child.children()
                     .filter(|seq_child| seq_child.name() == "sequence")
                     .for_each(|seq_child| {
                         FromElem::from_elem(seq_child)
@@ -637,7 +637,7 @@ fn parse_family(e: &Element) -> Result<Vec<Device>, Error> {
                 Vec::new()
             }
             "sequences" => {
-                e.children()
+                child.children()
                     .filter(|seq_child| seq_child.name() == "sequence")
                     .for_each(|seq_child| {
                         FromElem::from_elem(seq_child)
