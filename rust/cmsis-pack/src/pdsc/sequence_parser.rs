@@ -160,7 +160,7 @@ fn expr_binary(i: &str) -> IResult<&str, Expr> {
     fn p1(i: &str) -> IResult<&str, Expr> { bin(i, expr_unary, alt((tag("*"), tag("/"), tag("%")))) }
     fn p2(i: &str) -> IResult<&str, Expr> { bin(i, p1, alt((tag("+"), tag("-")))) }
     fn p3(i: &str) -> IResult<&str, Expr> { bin(i, p2, alt((tag("<<"), tag(">>")))) }
-    fn p4(i: &str) -> IResult<&str, Expr> { bin(i, p3, alt((tag("<"), tag("<="), tag(">"), tag(">=")))) }
+    fn p4(i: &str) -> IResult<&str, Expr> { bin(i, p3, alt((tag("<="), tag(">="), tag("<"), tag(">")))) }
     fn p5(i: &str) -> IResult<&str, Expr> { bin(i, p4, alt((tag("=="), tag("!=")))) }
     fn p6(i: &str) -> IResult<&str, Expr> { bin(i, p5, tag("&")) }
     fn p7(i: &str) -> IResult<&str, Expr> { bin(i, p6, tag("^")) }
