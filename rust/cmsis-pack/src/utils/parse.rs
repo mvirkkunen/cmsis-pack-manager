@@ -47,7 +47,22 @@ where
 {
     from.attr(name)
         .ok_or_else(|| format_err!("{} not found in {} element", name, elemname))
-        .and_then(|st| st.parse::<T>().map_err(|e| format_err!("{}", e)))
+        .and_then(|st| st.parse::<T>().map_err(|e| format_err!("invalid {} in {}: {}", name, elemname, e)))
+}
+
+pub fn attr_parse_opt<'a, T, E>(
+    from: &'a Element,
+    name: &str,
+    elemname: &'static str,
+) -> Result<Option<T>, Error>
+where
+    T: FromStr<Err = E>,
+    E: Display,
+{
+    from.attr(name)
+        .filter(|st| !st.is_empty())
+        .map(|st| st.parse::<T>().map_err(|e| format_err!("invalid {} in {}: {}", name, elemname, e)))
+        .transpose()
 }
 
 pub fn child_text<'a>(

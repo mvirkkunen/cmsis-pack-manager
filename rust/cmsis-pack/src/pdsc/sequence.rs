@@ -59,9 +59,9 @@ pub struct Control {
 impl FromElem for Control {
     fn from_elem(e: &Element) -> Result<Self, Error> {
         Ok(Control {
-            if_cond: attr_parse(e, "if", "control").ok(),
-            while_cond: attr_parse(e, "while", "control").ok(),
-            timeout: attr_parse(e, "timeout", "control").ok(),
+            if_cond: attr_parse_opt(e, "if", "control")?,
+            while_cond: attr_parse_opt(e, "while", "control")?,
+            timeout: attr_parse_opt(e, "timeout", "control")?,
             info: attr_parse(e, "info", "control").ok(),
             body: e
                 .children()
@@ -82,7 +82,7 @@ impl FromElem for Block {
     fn from_elem(e: &Element) -> Result<Self, Error> {
         Ok(Block {
             atomic: attr_parse(e, "atomic", "block").unwrap_or(false),
-            info: attr_parse(e, "body", "control").ok(),
+            info: attr_parse(e, "info", "block").ok(),
             body: Stmt::parse(&e.text())?,
         })
     }
