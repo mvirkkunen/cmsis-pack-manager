@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, HashMap};
+use std::hash::Hash;
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::utils::prelude::*;
-use crate::pdsc::sequence::{Num, Sequence};
-use crate::pdsc::sequence_parser::parse_debug_vars;
+use crate::pdsc::sequence::{DebugVars, Sequences};
 use failure::{format_err, Error};
 use minidom::Element;
 use serde::{Deserialize, Serialize};
@@ -364,21 +364,18 @@ impl FromElem for MemElem {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Memories(pub HashMap<String, Memory>);
 
-fn merge_memories(lhs: Memories, rhs: &Memories) -> Memories {
-    let rhs: Vec<_> = rhs
-        .0
-        .iter()
-        .filter_map(|(k, v)| {
-            if lhs.0.contains_key(k) {
-                None
-            } else {
-                Some((k.clone(), v.clone()))
-            }
-        })
-        .collect();
-    let mut lhs = lhs;
-    lhs.0.extend(rhs);
-    lhs
+/// Adds entries from source to target without overwriting existing keys
+fn merge_entries<K: Hash + Eq + Clone, V: Clone>(
+    mut target: HashMap<K, V>,
+    source: &HashMap<K, V>) -> HashMap<K, V>
+{
+    for (k, v) in source.iter() {
+        if !target.contains_key(k) {
+            target.insert(k.clone(), v.clone());
+        }
+    }
+
+    target
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -418,8 +415,8 @@ struct DeviceBuilder<'dom> {
     vendor: Option<&'dom str>,
     family: Option<&'dom str>,
     sub_family: Option<&'dom str>,
-    debug_vars: HashMap<String, Num>,
-    sequences: Vec<Sequence>,
+    debug_vars: DebugVars,
+    sequences: Sequences,
 }
 
 #[derive(Debug, Serialize)]
@@ -431,13 +428,15 @@ pub struct Device {
     pub vendor: Option<String>,
     pub family: String,
     pub sub_family: Option<String>,
-    pub debug_vars: HashMap<String, Num>,
-    pub sequences: Vec<Sequence>,
+    pub debug_vars: DebugVars,
+    pub sequences: Sequences,
 }
 
 impl<'dom> DeviceBuilder<'dom> {
     fn from_elem(e: &'dom Element) -> Self {
         let memories = Memories(HashMap::new());
+        let debug_vars = DebugVars(HashMap::new());
+        let sequences = Sequences(HashMap::new());
         let mut family = None;
         let mut sub_family = None;
         if e.name() == "family" {
@@ -454,8 +453,8 @@ impl<'dom> DeviceBuilder<'dom> {
             processor: None,
             family,
             sub_family,
-            debug_vars: HashMap::new(),
-            sequences: Vec::new(),
+            debug_vars,
+            sequences,
         }
     }
 
@@ -486,12 +485,10 @@ impl<'dom> DeviceBuilder<'dom> {
 
     fn add_parent(mut self, parent: &Self) -> Result<Self, Error> {
         self.algorithms.extend_from_slice(&parent.algorithms);
-        self.debug_vars.extend(parent.debug_vars.clone());
-        self.sequences.extend_from_slice(&parent.sequences);
         Ok(Self {
             name: self.name.or(parent.name),
             algorithms: self.algorithms,
-            memories: merge_memories(self.memories, &parent.memories),
+            memories: Memories(merge_entries(self.memories.0, &parent.memories.0)),
             processor: match self.processor {
                 Some(old_proc) => Some(old_proc.merge(&parent.processor)?),
                 None => parent.processor.clone(),
@@ -499,8 +496,8 @@ impl<'dom> DeviceBuilder<'dom> {
             vendor: self.vendor.or(parent.vendor),
             family: self.family.or(parent.family),
             sub_family: self.sub_family.or(parent.sub_family),
-            debug_vars: self.debug_vars,
-            sequences: self.sequences,
+            debug_vars: DebugVars(merge_entries(self.debug_vars.0, &parent.debug_vars.0)),
+            sequences: Sequences(merge_entries(self.sequences.0, &parent.sequences.0)),
         })
     }
 
@@ -522,13 +519,13 @@ impl<'dom> DeviceBuilder<'dom> {
         self
     }
 
-    fn add_sequence(&mut self, seq: Sequence) -> &mut Self {
-        self.sequences.push(seq);
+    fn add_sequences(&mut self, seq: Sequences) -> &mut Self {
+        self.sequences.0.extend(seq.0);
         self
     }
 
-    fn add_debug_vars(&mut self, vars: HashMap<String, Num>) -> &mut Self {
-        self.debug_vars.extend(vars);
+    fn add_debug_vars(&mut self, vars: DebugVars) -> &mut Self {
+        self.debug_vars.0.extend(vars.0);
         self
     }
 }
@@ -558,19 +555,15 @@ fn parse_device<'dom>(e: &'dom Element) -> Vec<DeviceBuilder<'dom>> {
                 None
             },
             "debugvars" => {
-                parse_debug_vars(&child.text())
+                FromElem::from_elem(child)
                     .ok_warn()
-                    .map(|vars| device.add_debug_vars(vars.1));
+                    .map(|vars| device.add_debug_vars(vars));
                 None
             },
             "sequences" => {
-                child.children()
-                    .filter(|seq_child| seq_child.name() == "sequence")
-                    .for_each(|seq_child| {
-                        FromElem::from_elem(seq_child)
-                            .ok_warn()
-                            .map(|seq| device.add_sequence(seq));
-                    });
+                FromElem::from_elem(child)
+                    .ok_warn()
+                    .map(|seqs| device.add_sequences(seqs));
                 None
             },
             _ => None,
@@ -611,19 +604,15 @@ fn parse_sub_family<'dom>(e: &'dom Element) -> Vec<DeviceBuilder<'dom>> {
                 Vec::new()
             }
             "debugvars" => {
-                parse_debug_vars(&child.text())
+                FromElem::from_elem(child)
                     .ok_warn()
-                    .map(|vars| sub_family_device.add_debug_vars(vars.1));
-                Vec::new()
+                    .map(|vars| sub_family_device.add_debug_vars(vars));
+                    Vec::new()
             },
             "sequences" => {
-                child.children()
-                    .filter(|seq_child| seq_child.name() == "sequence")
-                    .for_each(|seq_child| {
-                        FromElem::from_elem(seq_child)
-                            .ok_warn()
-                            .map(|seq| sub_family_device.add_sequence(seq));
-                    });
+                FromElem::from_elem(child)
+                    .ok_warn()
+                    .map(|seqs| sub_family_device.add_sequences(seqs));
                 Vec::new()
             }
             _ => Vec::new(),
@@ -661,19 +650,15 @@ fn parse_family(e: &Element) -> Result<Vec<Device>, Error> {
                 Vec::new()
             }
             "debugvars" => {
-                parse_debug_vars(&child.text())
+                FromElem::from_elem(child)
                     .ok_warn()
-                    .map(|vars| family_device.add_debug_vars(vars.1));
-                Vec::new()
+                    .map(|vars| family_device.add_debug_vars(vars));
+                    Vec::new()
             },
             "sequences" => {
-                child.children()
-                    .filter(|seq_child| seq_child.name() == "sequence")
-                    .for_each(|seq_child| {
-                        FromElem::from_elem(seq_child)
-                            .ok_warn()
-                            .map(|seq| family_device.add_sequence(seq));
-                    });
+                FromElem::from_elem(child)
+                    .ok_warn()
+                    .map(|seqs| family_device.add_sequences(seqs));
                 Vec::new()
             }
             _ => Vec::new(),

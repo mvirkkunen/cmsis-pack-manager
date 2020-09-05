@@ -9,26 +9,41 @@ use crate::utils::prelude::*;
 use crate::pdsc::sequence_parser;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Sequences(pub HashMap<String, Sequence>);
+
+impl FromElem for Sequences {
+    fn from_elem(e: &Element) -> Result<Self, Error> {
+        Ok(Sequences(
+            e.children()
+                .filter(|seq_child| seq_child.name() == "sequence")
+                .map(FromElem::from_elem)
+                .collect::<Result<HashMap<_, _>, _>>()?
+        ))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sequence {
-    pub name: String,
     pub pname: Option<String>,
     pub disable: bool,
     pub info: Option<String>,
     pub body: Vec<Struct>,
 }
 
-impl FromElem for Sequence {
+impl FromElem for (String, Sequence) {
     fn from_elem(e: &Element) -> Result<Self, Error> {
-        Ok(Sequence {
-            name: attr_parse(e, "name", "sequence")?,
-            pname: attr_parse(e, "Pname", "sequence").ok(),
-            disable: attr_parse(e, "disable", "sequence").unwrap_or(false),
-            info: attr_parse(e, "info", "sequence").ok(),
-            body: e
-                .children()
-                .map(|child| Struct::from_elem(child))
-                .collect::<Result<Vec<_>, _>>()?,
-        })
+        Ok((
+            attr_parse(e, "name", "sequence")?,
+            Sequence {
+                pname: attr_parse(e, "Pname", "sequence").ok(),
+                disable: attr_parse(e, "disable", "sequence").unwrap_or(false),
+                info: attr_parse(e, "info", "sequence").ok(),
+                body: e
+                    .children()
+                    .map(|child| Struct::from_elem(child))
+                    .collect::<Result<Vec<_>, _>>()?,
+            }
+        ))
     }
 }
 
@@ -226,35 +241,29 @@ mod test {
     use super::*;
 
     #[test]
-    fn parse_sequence() {
-        // Sample sequence from CMSIS-Pack documentation
+    fn parse_sequences() {
         let test_xml = r#"
-            <sequence name="ResetHardware">
-                <block>
-                    __var nReset      = 0x80;
-                    __var canReadPins = 0;
-                    // De-assert nRESET line
-                    canReadPins = (DAP_SWJ_Pins(0x00, nReset, 0) != 0xFFFFFFFF);
-                </block>
-                <!-- Keep reset active for 50 ms -->
-                <control while="1" timeout="50000"/>
-                <control if="canReadPins">
-                    <!-- Assert nRESET line and wait max. 1s for recovery -->
-                    <control while="(DAP_SWJ_Pins(nReset, nReset, 0) &amp; nReset) == 0" timeout="1000000"/>
-                </control>
-                <control if="!canReadPins">
+            <sequences>
+                <sequence name="TestSequence">
                     <block>
-                        // Assert nRESET line
-                        DAP_SWJ_Pins(nReset, nReset, 0);
+                        __var foo = 0;
+                        foo = Read32(0);
+                        foo = 0x1337;
                     </block>
-                    <!-- Wait 100ms for recovery if nRESET not readable -->
-                    <control while="1" timeout="100000"/>
-                </control>
-            </sequence>
+                    <control if="foo" while="foo" timeout="1000">
+                        <block>
+                            Message(0, "test", foo + 1);
+                        </block>
+                    </control>
+                </sequence>
+            </sequences>
         "#;
 
-        // TODO: Real tests
-        Sequence::from_string(test_xml).unwrap();
+        let seqs = Sequences::from_string(test_xml).expect("from_string");
+
+        seqs.0.get("TestSequence").expect("get TestSequence");
+
+        println!("{:#?}", seqs.0);
     }
 
     #[test]
