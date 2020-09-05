@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::utils::prelude::*;
-use crate::pdsc::sequence::Sequence;
+use crate::pdsc::sequence::{Num, Sequence};
+use crate::pdsc::sequence_parser::parse_debug_vars;
 use failure::{format_err, Error};
 use minidom::Element;
 use serde::{Deserialize, Serialize};
@@ -417,6 +418,7 @@ struct DeviceBuilder<'dom> {
     vendor: Option<&'dom str>,
     family: Option<&'dom str>,
     sub_family: Option<&'dom str>,
+    debug_vars: HashMap<String, Num>,
     sequences: Vec<Sequence>,
 }
 
@@ -429,6 +431,7 @@ pub struct Device {
     pub vendor: Option<String>,
     pub family: String,
     pub sub_family: Option<String>,
+    pub debug_vars: HashMap<String, Num>,
     pub sequences: Vec<Sequence>,
 }
 
@@ -451,6 +454,7 @@ impl<'dom> DeviceBuilder<'dom> {
             processor: None,
             family,
             sub_family,
+            debug_vars: HashMap::new(),
             sequences: Vec::new(),
         }
     }
@@ -475,12 +479,14 @@ impl<'dom> DeviceBuilder<'dom> {
             vendor: self.vendor.map(str::to_string),
             family,
             sub_family: self.sub_family.map(str::to_string),
+            debug_vars: self.debug_vars,
             sequences: self.sequences,
         })
     }
 
     fn add_parent(mut self, parent: &Self) -> Result<Self, Error> {
         self.algorithms.extend_from_slice(&parent.algorithms);
+        self.debug_vars.extend(parent.debug_vars.clone());
         self.sequences.extend_from_slice(&parent.sequences);
         Ok(Self {
             name: self.name.or(parent.name),
@@ -493,6 +499,7 @@ impl<'dom> DeviceBuilder<'dom> {
             vendor: self.vendor.or(parent.vendor),
             family: self.family.or(parent.family),
             sub_family: self.sub_family.or(parent.sub_family),
+            debug_vars: self.debug_vars,
             sequences: self.sequences,
         })
     }
@@ -519,6 +526,11 @@ impl<'dom> DeviceBuilder<'dom> {
         self.sequences.push(seq);
         self
     }
+
+    fn add_debug_vars(&mut self, vars: HashMap<String, Num>) -> &mut Self {
+        self.debug_vars.extend(vars);
+        self
+    }
 }
 
 fn parse_device<'dom>(e: &'dom Element) -> Vec<DeviceBuilder<'dom>> {
@@ -543,6 +555,12 @@ fn parse_device<'dom>(e: &'dom Element) -> Vec<DeviceBuilder<'dom>> {
                 FromElem::from_elem(child)
                     .ok_warn()
                     .map(|prc| device.add_processor(prc));
+                None
+            },
+            "debugvars" => {
+                parse_debug_vars(&child.text())
+                    .ok_warn()
+                    .map(|vars| device.add_debug_vars(vars.1));
                 None
             },
             "sequences" => {
@@ -592,6 +610,12 @@ fn parse_sub_family<'dom>(e: &'dom Element) -> Vec<DeviceBuilder<'dom>> {
                     .map(|prc| sub_family_device.add_processor(prc));
                 Vec::new()
             }
+            "debugvars" => {
+                parse_debug_vars(&child.text())
+                    .ok_warn()
+                    .map(|vars| sub_family_device.add_debug_vars(vars.1));
+                Vec::new()
+            },
             "sequences" => {
                 child.children()
                     .filter(|seq_child| seq_child.name() == "sequence")
@@ -636,6 +660,12 @@ fn parse_family(e: &Element) -> Result<Vec<Device>, Error> {
                     .map(|prc| family_device.add_processor(prc));
                 Vec::new()
             }
+            "debugvars" => {
+                parse_debug_vars(&child.text())
+                    .ok_warn()
+                    .map(|vars| family_device.add_debug_vars(vars.1));
+                Vec::new()
+            },
             "sequences" => {
                 child.children()
                     .filter(|seq_child| seq_child.name() == "sequence")

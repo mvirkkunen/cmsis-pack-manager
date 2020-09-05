@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::num::ParseIntError;
 use std::str::FromStr;
 use std::u64;
@@ -78,16 +79,21 @@ fn parens(i: &str) -> IResult<&str, Expr> {
     delimited(tws(tag("(")), expr, tws(tag(")")))(i)
 }
 
-fn expr_num(i: &str) -> IResult<&str, Expr> {
+fn num(i: &str) -> IResult<&str, Num> {
     alt((
         map_res(
             tws(preceded(tag_no_case("0x"), hex_digit1)),
-            |n: &str| Ok::<Expr, ParseIntError>(Expr::Num(u64::from_str_radix(n, 16)?, NumStyle::Hex))),
+            |n: &str| Ok::<_, ParseIntError>(Num(u64::from_str_radix(n, 16)?, NumStyle::Hex))),
         map_res(
             tws(digit1),
-            |n: &str| Ok::<Expr, ParseIntError>(Expr::Num(n.parse()?, NumStyle::Dec))),
-        parens,
+            |n: &str| Ok::<_, ParseIntError>(Num(n.parse()?, NumStyle::Dec))),
     ))(i)
+}
+
+fn expr_num(i: &str) -> IResult<&str, Expr> {
+    alt((
+        map(num, Expr::Num),
+        parens))(i)
 }
 
 fn expr_var(i: &str) -> IResult<&str, Expr> {
@@ -217,6 +223,27 @@ pub fn parse_expr(i: &str) -> IResult<&str, Expr> {
 
 pub fn parse_stmts(i: &str) -> IResult<&str, Vec<Stmt>> {
     all_consuming(preceded(ws_or_comment, many0(stmt)))(i)
+}
+
+pub fn parse_debug_vars(i: &str) -> IResult<&str, HashMap<String, Num>> {
+    all_consuming(
+        preceded(
+            ws_or_comment,
+            fold_many0(
+                terminated(
+                    pair(
+                        preceded(
+                            tws(terminated(tag("__var"), multispace1)),
+                            tws(ident)),
+                        preceded(
+                            tws(char('=')),
+                            num)),
+                    tws(char(';'))),
+                HashMap::new(),
+                |mut map, (name, value)| {
+                    map.insert(name.to_string(), value);
+                    map
+                })))(i)
 }
 
 #[cfg(test)]

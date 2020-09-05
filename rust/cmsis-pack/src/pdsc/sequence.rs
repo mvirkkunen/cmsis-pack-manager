@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::str::FromStr;
 
 use failure::{format_err, Error};
@@ -105,7 +106,7 @@ impl Stmt {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expr {
-    Num(u64, NumStyle),
+    Num(Num),
     Var(String),
     Call(String, Vec<Arg>),
     Unary(UnOp, Box<Expr>),
@@ -113,7 +114,10 @@ pub enum Expr {
     Cond(Box<(Expr, Expr, Expr)>),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Num(pub u64, pub NumStyle);
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum NumStyle {
     Dec,
     Hex,
@@ -128,7 +132,7 @@ impl FromStr for Expr {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum UnOp {
     BitNot,
     Not,
@@ -149,7 +153,7 @@ impl FromStr for UnOp {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum BinOp {
     Add,
     Sub,
@@ -204,12 +208,25 @@ pub enum Arg {
     String(String),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DebugVars(pub HashMap<String, Num>);
+
+impl FromElem for DebugVars {
+    fn from_elem(e: &Element) -> Result<Self, Error> {
+        Ok(DebugVars(
+            sequence_parser::parse_debug_vars(&e.text())
+                .map(|res| res.1)
+                .map_err(|err| format_err!("debugvars parse error: {}", err))?
+        ))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
-    fn parser() {
+    fn parse_sequence() {
         // Sample sequence from CMSIS-Pack documentation
         let test_xml = r#"
             <sequence name="ResetHardware">
@@ -238,5 +255,21 @@ mod test {
 
         // TODO: Real tests
         Sequence::from_string(test_xml).unwrap();
+    }
+
+    #[test]
+    fn parse_debugvars() {
+        let vars = DebugVars::from_string(r#"
+            <debugvars>
+                __var foo = 0x1337;
+                __var bar = 2;
+            </debugvars>
+        "#).expect("from_string");
+
+        let mut expected = HashMap::new();
+        expected.insert("foo".to_string(), Num(0x1337, NumStyle::Hex));
+        expected.insert("bar".to_string(), Num(2, NumStyle::Dec));
+
+        assert_eq!(vars.0, expected);
     }
 }
